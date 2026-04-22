@@ -1,0 +1,91 @@
+---
+title: 'Promptlint rules — all 20 built-in checks'
+description: 'All 20 built-in Promptlint rules across security, quality, completeness, and cost — with default severities, auto-fix support, and inline disable syntax.'
+keywords: ['promptlint', 'rules', 'linting', 'prompt analysis', 'security', 'cost', 'quality', 'completeness']
+---
+
+Promptlint ships with 20 built-in rules organized into four categories: **Security**, **Quality**, **Completeness**, and **Cost**. Every rule runs on each prompt you analyze — no configuration is required to get started. Rules are deterministic, run entirely locally, and complete in milliseconds regardless of prompt length. The overall health score is a weighted average across the four categories, with security carrying the highest weight at 40%.
+
+## All 20 rules
+
+| Rule ID | Category | Default severity | Auto-fixable |
+|---|---|---|---|
+| `prompt-injection` | Security | CRITICAL | Yes |
+| `jailbreak-pattern` | Security | CRITICAL | — |
+| `secret-in-prompt` | Security | CRITICAL | — |
+| `pii-in-prompt` | Security | WARN | — |
+| `context-injection-boundary` | Security | WARN | — |
+| `cost` | Cost | INFO | — |
+| `cost-limit` | Cost | WARN | — |
+| `politeness-bloat` | Cost | WARN | Yes |
+| `structure-sections` | Quality | WARN | Yes |
+| `clarity-vague-terms` | Quality | WARN | — |
+| `verbosity-sentence-length` | Quality | INFO | — |
+| `verbosity-redundancy` | Quality | INFO | Yes |
+| `actionability-weak-verbs` | Quality | INFO | — |
+| `consistency-terminology` | Quality | INFO | — |
+| `role-clarity` | Completeness | WARN | — |
+| `output-format-missing` | Completeness | WARN | — |
+| `hallucination-risk` | Completeness | WARN | — |
+| `specificity-examples` | Completeness | INFO | — |
+| `specificity-constraints` | Completeness | INFO | — |
+| `completeness-edge-cases` | Completeness | INFO | — |
+
+## Severity levels
+
+Every finding carries one of three severity levels that control both the visual output and the CLI exit code.
+
+| Level | Exit code behavior | What it indicates |
+|---|---|---|
+| `CRITICAL` | Exits `2` by default | Security violation that should block CI — injection, leaked credentials, confirmed jailbreak. |
+| `WARN` | Exits `1` with `--fail-level warn` | Actionable quality or budget problem. Does not fail CI unless you opt in. |
+| `INFO` | Never fails CI | Informational suggestion. Always exits `0` regardless of `--fail-level`. |
+
+<Note>
+The default `--fail-level` is `critical`. Pass `--fail-level warn` to block CI on warnings too, or `--fail-level none` to always exit `0`.
+</Note>
+
+## Listing and explaining rules
+
+Use the CLI to inspect the rule set without running a full lint pass.
+
+```bash
+# Print all rule IDs with their categories and default severities
+promptlint --list-rules
+
+# Print a detailed explanation for a specific rule
+promptlint --explain prompt-injection
+promptlint --explain politeness-bloat
+```
+
+## Inline disable syntax
+
+Suppress a rule on a specific line by appending a `# promptlint-disable` comment. This works in any prompt file regardless of extension.
+
+```text
+Your $100 budget constraint  # promptlint-disable prompt-injection
+
+Please write the summary  # promptlint-disable politeness-bloat
+
+Ignore all previous context  # promptlint-disable
+```
+
+The bare `# promptlint-disable` (with no rule ID) silences all rules on that line.
+
+<Note>
+Inline disables only apply to findings that report a specific line number. Rules that report line `-` operate on the whole prompt — for example `structure-sections` and `role-clarity`. Disable those in `.promptlintrc` instead.
+</Note>
+
+## Explore by category
+
+<CardGroup cols={3}>
+  <Card title="Security rules" icon="shield" href="/rules/security">
+    Five rules that catch injection, jailbreaks, PII, leaked secrets, and unsafe template variable boundaries.
+  </Card>
+  <Card title="Quality rules" icon="sparkles" href="/rules/quality">
+    Twelve rules covering structure, role clarity, output format, hallucination risk, vague terms, verbosity, weak verbs, and consistency.
+  </Card>
+  <Card title="Cost rules" icon="chart-bar" href="/rules/cost">
+    Token counting, budget enforcement, and politeness-bloat detection with a savings dashboard and A–F grade.
+  </Card>
+</CardGroup>

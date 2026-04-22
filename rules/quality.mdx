@@ -1,0 +1,472 @@
+---
+title: 'Quality rules — clarity, structure, and completeness'
+description: 'All 13 Promptlint quality rules: structure, role clarity, output format, hallucination risk, vague terms, verbosity, weak verbs, and mixed terminology.'
+keywords: ['promptlint', 'quality', 'clarity', 'structure', 'verbosity', 'actionability', 'consistency', 'completeness', 'hallucination']
+---
+
+Promptlint's quality rules analyze the internal coherence of a prompt rather than its security posture. They catch problems that make prompts unreliable or wasteful: missing structure that causes inconsistent outputs, vague language that the model interprets arbitrarily, verbose phrasing that inflates token counts, and weak directives that produce hedged responses. The 13 rules are split into two groups — structure and completeness checks that fire on the prompt as a whole, and language quality checks that fire on individual matches within the text.
+
+## Structure and completeness rules
+
+These seven rules evaluate the overall shape of your prompt. They report line `-` because they operate on the document as a whole rather than a specific character position.
+
+<AccordionGroup>
+  <Accordion title="structure-sections — WARN, auto-fixable">
+    Fires when a prompt has no recognizable sectioning structure. Well-structured prompts produce more consistent outputs because the model can distinguish context from instructions from expected output format.
+
+    **What it catches**
+
+    The rule checks for the presence of any one of these patterns:
+
+    - XML tags: `<task>`, `<context>`, etc.
+    - Labeled headings: `Task:`, `Context:`, `Output:`, `Goal:`, `Requirements:`, `Instructions:`
+    - Markdown headers: `## Section name`
+    - JSON or array structure: `{`, `[`, with quotes
+    - Code fences: ` ``` ` or `---`
+    - Numbered sections: `1.`, `2.`, etc.
+
+    If none of these are present, the rule fires.
+
+    **Example finding**
+
+    ```text
+    [ WARN ] structure-sections (line -) No explicit sections detected (Task/Context/Output).
+    [ INFO ] structure-recommendations (line -) Recommended templates: headings (Task:, Context:, Output:) / XML tags (<task>) / Markdown (## sections).
+    ```
+
+    **Auto-fix** adds a scaffold when `--fix` is passed:
+
+    ```text
+    $ promptlint -t "Write a summary of the article." --fix
+
+    Optimized Prompt
+    <task>Write a summary of the article.</task>
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      structure_sections:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="role-clarity — WARN">
+    Fires when an instructional prompt (one that uses words like `you`, `respond`, `always`, `never`, `must`, or `should`) does not define a role or persona for the model. Without a role, the model defaults to a generic assistant behavior that may not match your use case.
+
+    **What it catches**
+
+    The rule only fires on prompts with at least 30 words that contain instructional language. It looks for any of:
+
+    ```text
+    you are / you're / act as / your role is / you will serve as /
+    you are a / you are an / you work as / your job is / your task is /
+    you are responsible for / you specialize in
+    ```
+
+    If none of these are present, the rule fires.
+
+    **Example finding**
+
+    ```text
+    [ WARN ] role-clarity (line -) No role or persona defined. Add 'You are a [role]...' to improve output consistency.
+    ```
+
+    **Fix** — add a role statement at the top of the prompt:
+
+    ```text
+    You are a senior technical writer specializing in API documentation.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      role_clarity:
+        enabled: true
+        severity: warn   # can be downgraded to info
+    ```
+  </Accordion>
+
+  <Accordion title="output-format-missing — WARN">
+    Fires when a prompt requests output (using verbs like `list`, `extract`, `return`, `generate`, `summarize`, or `identify`) but does not specify a format. Without a format directive, the model chooses its own structure, which leads to inconsistent downstream parsing.
+
+    **What it catches**
+
+    The rule looks for output-instruction verbs:
+
+    ```text
+    list / extract / find / return / give me / provide / output /
+    generate / create / show / summarize / identify / enumerate
+    ```
+
+    Then checks for format keywords. If the instruction verbs are present but no format keywords appear, the rule fires:
+
+    ```text
+    JSON / XML / CSV / markdown / bullet / numbered / table /
+    plain text / HTML / YAML / format: / return as / output as /
+    structured as / schema
+    ```
+
+    **Example finding**
+
+    ```text
+    [ WARN ] output-format-missing (line -) Output instruction detected but no format specified (JSON, markdown, bullet list, etc.). Unspecified format produces inconsistent results.
+    ```
+
+    **Fix** — add an explicit format directive:
+
+    ```text
+    List the top five features. Return as a JSON array of strings.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      output_format_missing:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="hallucination-risk — WARN">
+    Fires when a prompt asks the model to recall factual or current information without providing grounding context. Ungrounded factual prompts rely entirely on the model's training data, which may be outdated, incomplete, or confidently wrong.
+
+    **What it catches**
+
+    Factual question patterns:
+
+    ```text
+    what is / what are / who is / who are / when did / when was /
+    where is / how many / how much / currently / latest / recently /
+    today / now / as of / up to date / tell me about / give me a summary of
+    ```
+
+    Grounding indicators (any of these prevents the rule from firing):
+
+    - `{variable}` — template variable that injects context at runtime
+    - `<context>` — XML context section
+    - `Context:` — labeled context heading
+    - ` ``` ` — code fence enclosing source data
+    - `Given the following` / `Based on the following` / `Using the data below`
+
+    **Example finding**
+
+    ```text
+    [ WARN ] hallucination-risk (line -) Prompt requests factual/current information without grounding context. Consider adding a {context} variable or <context> section with source data.
+    ```
+
+    **Fix** — inject a context variable or section:
+
+    ```text
+    Based on the following article, answer the question.
+
+    <context>
+    {article_text}
+    </context>
+
+    Question: {user_question}
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      hallucination_risk:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="specificity-examples — INFO">
+    Fires when a prompt contains a creative or generative instruction (`write`, `create`, `generate`, `build`, `implement`, `design`) but provides no examples of the expected output. Examples dramatically reduce ambiguity for the model.
+
+    **What it catches**
+
+    The rule looks for instruction verbs and then checks whether any of these appear: `example`, `e.g.`, `such as`, `like`, `for instance`. If the instruction verbs are present, no examples are found, and the prompt is longer than 100 characters, the rule fires.
+
+    **Example finding**
+
+    ```text
+    [ INFO ] specificity-examples (line -) Consider adding examples to clarify expected output format.
+    ```
+
+    **Fix** — add a concrete example inline:
+
+    ```text
+    Write a product description for each item. For example:
+    "The Aero Chair: Ergonomic mesh back, adjustable lumbar support, 5-year warranty."
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      specificity_examples:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="specificity-constraints — INFO">
+    Fires when a prompt contains a task instruction but imposes no constraints on the output. Constraints prevent the model from producing outputs that are too long, too short, or structured in a way that is hard to use downstream.
+
+    **What it catches**
+
+    The rule looks for task verbs (`write`, `create`, `generate`, `list`, `explain`) and then checks for constraint keywords. If no constraints are found and the prompt is longer than 80 characters, the rule fires:
+
+    ```text
+    must / should / limit / maximum / minimum / between / exactly / only
+    ```
+
+    **Example finding**
+
+    ```text
+    [ INFO ] specificity-constraints (line -) Consider adding constraints (length, format, scope) for clearer results.
+    ```
+
+    **Fix** — add explicit constraints:
+
+    ```text
+    Write a product description in 2–3 sentences. It must mention the price and the return policy.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      specificity_constraints:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="completeness-edge-cases — INFO">
+    Fires when a prompt asks the model to implement or build something but does not specify how to handle edge cases, errors, or invalid input. Missing error-handling instructions cause the model to make up behavior for unexpected inputs.
+
+    **What it catches**
+
+    The rule looks for implementation verbs (`write`, `create`, `implement`, `build`, `generate`) and then checks for edge-case keywords. If none appear and the prompt is longer than 100 characters, the rule fires:
+
+    ```text
+    edge case / error / exception / invalid / empty / null / missing
+    ```
+
+    **Example finding**
+
+    ```text
+    [ INFO ] completeness-edge-cases (line -) Consider specifying how to handle edge cases and errors.
+    ```
+
+    **Fix** — state the expected behavior explicitly:
+
+    ```text
+    Write a function that parses the JSON input. If the input is invalid or missing required keys, return null and log a descriptive error message.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      completeness_edge_cases:
+        enabled: true
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Language quality rules
+
+These six rules match specific terms and phrases within the prompt text and report the exact line and character position.
+
+<AccordionGroup>
+  <Accordion title="clarity-vague-terms — WARN">
+    Fires on language that is genuinely ambiguous — quantifiers and catch-alls that force the model to guess your intent.
+
+    **Detected patterns**
+
+    | Pattern | Issue type |
+    |---|---|
+    | `some`, `several`, `various`, `many`, `few` | Vague quantifier — specify a number or range |
+    | `stuff`, `things`, `etc`, `and so on`, `and more` | Trailing vague catch-all — enumerate explicitly |
+    | `somehow`, `somewhere`, `sometime` | Unspecified manner, place, or time |
+    | `maybe` | Uncertain language in an instruction context |
+
+    **Example finding**
+
+    ```text
+    [ WARN ] clarity-vague-terms (line 1) Vague term 'some' detected (vague quantifier — specify a number or range). Be more specific.
+    Extract some key points from the document.
+    ^
+    ```
+
+    **Fix** — replace vague quantifiers with specific values:
+
+    ```text
+    Extract the 5 most important key points from the document.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      clarity_vague_terms:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="verbosity-sentence-length — INFO">
+    Fires when a sentence in the prompt exceeds 40 words. Long sentences are harder for the model to parse correctly and often contain compound instructions that should be separated.
+
+    **What it catches**
+
+    Sentences are split on punctuation (`.`, `!`, `?`) followed by whitespace and a capital letter. The rule avoids splitting on abbreviations (e.g., `i.e.`, `v1.0`, decimals).
+
+    **Example finding**
+
+    ```text
+    [ INFO ] verbosity-sentence-length (line -) Long sentence detected (47 words). Consider breaking it up.
+    ```
+
+    **Fix** — split into multiple sentences or a bulleted list:
+
+    ```text
+    # Before (one 47-word sentence)
+    Write a comprehensive analysis of the user's feedback that covers the main themes identified in the survey responses and also includes a section on actionable recommendations that the product team can implement in the next sprint.
+
+    # After
+    Write a comprehensive analysis of the user's feedback. Cover the main themes from the survey responses. Include a section with actionable recommendations for the product team's next sprint.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      verbosity_sentence_length:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="verbosity-redundancy — INFO, auto-fixable">
+    Fires on redundant multi-word phrases that can be replaced with shorter equivalents without changing meaning. Each match saves tokens.
+
+    **Detected redundant phrases (sample)**
+
+    | Redundant phrase | Shorter alternative |
+    |---|---|
+    | `in order to` | `to` |
+    | `due to the fact that` | `because` |
+    | `at this point in time` | `now` |
+    | `for the purpose of` | `to` |
+    | `in the event that` | `if` |
+    | `prior to` | `before` |
+    | `has the ability to` | `can` |
+    | `is able to` | `can` |
+    | `each and every` | `every` |
+    | `past history` | `history` |
+    | `new innovation` | `innovation` |
+    | `repeat again` | `repeat` |
+    | `return back` | `return` |
+    | `on a daily basis` | `daily` |
+
+    **Example finding**
+
+    ```text
+    [ INFO ] verbosity-redundancy (line 3) Redundant phrase 'in order to' detected. Use simpler alternative.
+    Use this function in order to parse the input.
+                        ^
+    ```
+
+    **Auto-fix** rewrites the phrase in place when `--fix` is passed.
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      verbosity_redundancy:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="actionability-weak-verbs — INFO">
+    Fires on hedged directive language that reduces instruction strength. Weak directives cause the model to treat instructions as optional rather than mandatory.
+
+    **Detected patterns**
+
+    | Pattern | Issue type |
+    |---|---|
+    | `consider`, `try to`, `attempt to`, `endeavor to` | Weak directive — use imperative form |
+    | `you might want to` | Hedged instruction — use direct imperative |
+    | `feel free to` | Unnecessary hedge — remove |
+    | `it would be good/nice/helpful/great if` | Indirect instruction — state directly |
+    | `if possible` | Conditional hedge — commit to the instruction |
+    | `whenever possible`, `whenever you can` | Weak conditional — use `always` or state the condition explicitly |
+
+    The rule also fires when more than 5 passive-voice constructions appear in the same prompt.
+
+    **Example findings**
+
+    ```text
+    [ INFO ] actionability-weak-verbs (line 2) Weak directive 'consider' (weak directive — use imperative form).
+    Consider adding error handling to the function.
+    ^
+
+    [ INFO ] actionability-weak-verbs (line -) Multiple passive voice constructions (7) detected. Use active voice for clarity.
+    ```
+
+    **Fix** — replace with imperative verbs:
+
+    ```text
+    # Before
+    Consider adding error handling. Feel free to use try/except blocks if possible.
+
+    # After
+    Add error handling. Use try/except blocks.
+    ```
+
+    **Configuration**
+
+    ```yaml
+    rules:
+      actionability_weak_verbs:
+        enabled: true
+    ```
+  </Accordion>
+
+  <Accordion title="consistency-terminology — INFO">
+    Fires when a prompt uses two synonymous terms interchangeably. Inconsistent terminology can cause the model to treat the terms as distinct concepts and produce inconsistent or confused outputs.
+
+    **Built-in term pairs checked**
+
+    | Term A | Term B |
+    |---|---|
+    | `user` | `customer` |
+    | `function` | `method` |
+    | `error` | `exception` |
+    | `AI` | `model` |
+    | `LLM` | `model` |
+    | `query` | `request` |
+    | `response` | `reply` |
+    | `output` | `result` |
+    | `prompt` | `message` |
+    | `system prompt` | `instruction` |
+    | `task` | `goal` |
+    | `agent` | `assistant` |
+
+    **Example finding**
+
+    ```text
+    [ INFO ] consistency-terminology (line -) Mixed terminology: 'user' and 'customer'. Use one term consistently.
+    ```
+
+    **Configuration**
+
+    Add custom term groups (any two or more terms in the same group trigger if mixed):
+
+    ```yaml
+    rules:
+      consistency_terminology:
+        enabled: true
+        custom_pairs:
+          - [endpoint, route, path]
+          - [workspace, project]
+    ```
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,313 @@
+---
+title: "Configure Promptlint with .promptlintrc"
+description: "Full reference for the .promptlintrc YAML config file: model, token limits, cost settings, per-rule options, severity overrides, and auto-fix controls."
+keywords: ["promptlint", "configuration", ".promptlintrc", "config", "rules", "yaml"]
+---
+
+Promptlint reads a `.promptlintrc` file in YAML format from your current working directory. Every setting has a sensible default, so the file is optional — but adding one lets you tune cost parameters, enable or disable individual rules, override severities, and control which auto-fixes run.
+
+## Generating a starter config
+
+Run `--init` to write a `.promptlintrc` with all defaults filled in:
+
+```bash
+promptlint --init
+```
+
+<Note>
+  `--init` writes to the current working directory. If `.promptlintrc` already exists the command exits with an error — delete the file first to regenerate it.
+</Note>
+
+## Full starter config
+
+The following is the exact config written by `promptlint --init`:
+
+```yaml
+model: gpt-4o
+token_limit: 800
+cost_per_1k_tokens: 0.005
+calls_per_day: 10000
+
+display:
+  preview_length: 60
+  context_width: 80
+
+rules:
+  cost:
+    enabled: true
+  cost_limit:
+    enabled: true
+  prompt_injection:
+    enabled: true
+    patterns:
+      - ignore previous instructions
+      - system prompt extraction
+      - "you are now a [a-zA-Z ]+"
+  structure_sections:
+    enabled: true
+  clarity_vague_terms:
+    enabled: true
+  specificity_examples:
+    enabled: true
+  specificity_constraints:
+    enabled: true
+  politeness_bloat:
+    enabled: true
+    allow_politeness: false
+    words:
+      - please
+      - kindly
+      - i would appreciate
+      - thank you
+      - be so kind as to
+      - if possible
+    savings_per_hit: 1.5
+  verbosity_sentence_length:
+    enabled: true
+  verbosity_redundancy:
+    enabled: true
+  actionability_weak_verbs:
+    enabled: true
+  consistency_terminology:
+    enabled: true
+  completeness_edge_cases:
+    enabled: true
+  jailbreak_pattern:
+    enabled: true
+  role_clarity:
+    enabled: true
+  output_format_missing:
+    enabled: true
+  pii_in_prompt:
+    enabled: true
+    check_email: true
+    check_phone: true
+    check_ssn: true
+    check_credit_card: true
+    check_ip: false
+  secret_in_prompt:
+    enabled: true
+  hallucination_risk:
+    enabled: true
+  context_injection_boundary:
+    enabled: true
+
+fix:
+  enabled: true
+  prompt_injection: true
+  politeness_bloat: true
+  verbosity_redundancy: true
+  structure_scaffold: true
+```
+
+## Config file location
+
+Promptlint looks for `.promptlintrc` in the **current working directory**, not the directory of the file being linted. Always run from your repo root, or pass an explicit path:
+
+```bash
+promptlint --file prompts/system.txt --config path/to/.promptlintrc
+```
+
+## Top-level options
+
+<ParamField body="model" type="string" default="gpt-4o">
+  Model name used for cost calculations and token count display. This is a label only — no API calls are made.
+
+  ```yaml
+  model: gpt-4-turbo
+  ```
+</ParamField>
+
+<ParamField body="token_limit" type="number" default="800">
+  Maximum token count before the `cost-limit` rule fires a WARN finding. Accepts integers from 1 to 1,000,000.
+
+  ```yaml
+  token_limit: 500
+  ```
+</ParamField>
+
+<ParamField body="cost_per_1k_tokens" type="number" default="0.005">
+  Cost in USD per 1,000 tokens, used to calculate savings estimates. Accepts values from 0.0 to 1000.0.
+
+  ```yaml
+  cost_per_1k_tokens: 0.01   # gpt-4-turbo input pricing
+  ```
+</ParamField>
+
+<ParamField body="calls_per_day" type="number" default="1000000">
+  Expected number of API calls per day, used to project monthly and annual savings in the dashboard. Values above 100,000 suppress the monthly/annual projection to avoid misleading estimates.
+
+  ```yaml
+  calls_per_day: 50000
+  ```
+</ParamField>
+
+## Display options
+
+<ParamField body="display.preview_length" type="number" default="60">
+  Maximum character width for inline context snippets shown below a finding. Accepts 1–500.
+
+  ```yaml
+  display:
+    preview_length: 80
+  ```
+</ParamField>
+
+<ParamField body="display.context_width" type="number" default="80">
+  Terminal width (in characters) used when wrapping context output. Accepts 1–500.
+
+  ```yaml
+  display:
+    context_width: 100
+  ```
+</ParamField>
+
+## Rule options
+
+Each rule is configured under `rules.<rule_name>`. Rule keys accept both snake_case and kebab-case — `prompt_injection` and `prompt-injection` are equivalent.
+
+### Common per-rule fields
+
+<ParamField body="rules.<rule_name>.enabled" type="boolean" default="true">
+  Set to `false` to disable the rule entirely.
+
+  ```yaml
+  rules:
+    specificity_examples:
+      enabled: false
+  ```
+</ParamField>
+
+<ParamField body="rules.<rule_name>.severity" type="string">
+  Override the default severity for a rule. Accepted values: `info`, `warn`, `critical`. Overrides apply after analysis and affect exit code calculations.
+
+  ```yaml
+  rules:
+    role_clarity:
+      severity: warn   # downgrade from CRITICAL
+  ```
+</ParamField>
+
+### Injection detection (`prompt_injection`)
+
+<ParamField body="rules.prompt_injection.patterns" type="string[]">
+  List of regex patterns used to detect prompt injection. Each pattern is compiled and validated at startup — invalid regex is skipped with a warning on stderr.
+
+  ```yaml
+  rules:
+    prompt_injection:
+      enabled: true
+      patterns:
+        - ignore previous instructions
+        - system prompt extraction
+        - "you are now a [a-zA-Z ]+"
+  ```
+</ParamField>
+
+### PII detection (`pii_in_prompt`)
+
+<ParamField body="rules.pii_in_prompt.check_email" type="boolean" default="true">
+  Detect email addresses in the prompt.
+</ParamField>
+
+<ParamField body="rules.pii_in_prompt.check_phone" type="boolean" default="true">
+  Detect phone numbers in the prompt.
+</ParamField>
+
+<ParamField body="rules.pii_in_prompt.check_ssn" type="boolean" default="true">
+  Detect US Social Security Numbers.
+</ParamField>
+
+<ParamField body="rules.pii_in_prompt.check_credit_card" type="boolean" default="true">
+  Detect credit card numbers.
+</ParamField>
+
+<ParamField body="rules.pii_in_prompt.check_ip" type="boolean" default="false">
+  Detect IP addresses. Disabled by default to reduce false positives on documentation prompts.
+</ParamField>
+
+Example:
+
+```yaml
+rules:
+  pii_in_prompt:
+    enabled: true
+    check_email: true
+    check_phone: false
+    check_ssn: true
+    check_credit_card: true
+    check_ip: false
+```
+
+### Politeness bloat (`politeness_bloat`)
+
+<ParamField body="rules.politeness_bloat.words" type="string[]">
+  List of words or phrases considered politeness filler. Matched case-insensitively. Matches are counted toward token savings.
+
+  ```yaml
+  rules:
+    politeness_bloat:
+      words:
+        - please
+        - kindly
+        - thank you
+        - i would appreciate
+  ```
+</ParamField>
+
+<ParamField body="rules.politeness_bloat.allow_politeness" type="boolean" default="false">
+  Set to `true` to disable the politeness-bloat finding entirely while keeping the word list for auto-fix purposes.
+</ParamField>
+
+<ParamField body="rules.politeness_bloat.savings_per_hit" type="number" default="1.5">
+  Estimated tokens saved per matched politeness word, used in dashboard calculations.
+</ParamField>
+
+## Auto-fix options
+
+The `fix` block controls which transforms run when `--fix` is passed.
+
+<ParamField body="fix.enabled" type="boolean" default="true">
+  Master switch. Set to `false` to disable all auto-fixes even when `--fix` is passed.
+</ParamField>
+
+<ParamField body="fix.prompt_injection" type="boolean" default="true">
+  Remove lines that match injection patterns.
+</ParamField>
+
+<ParamField body="fix.politeness_bloat" type="boolean" default="true">
+  Strip politeness words and clean up resulting punctuation.
+</ParamField>
+
+<ParamField body="fix.verbosity_redundancy" type="boolean" default="true">
+  Replace verbose phrases with shorter equivalents (e.g., "in order to" → "to").
+</ParamField>
+
+<ParamField body="fix.structure_scaffold" type="boolean" default="true">
+  Add missing structural tags (`<task>`, `<context>`, `<output_format>`) when absent.
+</ParamField>
+
+Example — disable the structure scaffold fix while keeping others:
+
+```yaml
+fix:
+  enabled: true
+  structure_scaffold: false
+```
+
+## Severity overrides
+
+Any rule's severity can be overridden using the `severity` key under the rule config. This does not change whether the finding is reported — only the level attached to it, which in turn affects exit code behaviour.
+
+```yaml
+rules:
+  role_clarity:
+    severity: warn      # was CRITICAL, now only WARN
+
+  hallucination_risk:
+    severity: info      # demote to informational
+```
+
+<Tip>
+  Severity overrides are applied after all rules run, so they interact correctly with `--fail-level`. Downgrading `CRITICAL` findings to `WARN` means they will only trigger a non-zero exit when `--fail-level warn` is set.
+</Tip>

@@ -1,0 +1,177 @@
+---
+title: "Install Promptlint — pip, npm, and GitHub Action"
+description: "Install Promptlint via pip, npm, or the GitHub Action. Covers Python 3.9+, Node.js 16+, the VS Code extension, and tiktoken for exact token counts."
+keywords: ["promptlint", "install", "pip", "npm", "github action", "vs code", "setup"]
+---
+
+Promptlint ships in four forms so you can use it wherever your workflow lives: the Python CLI via pip, the Node.js CLI via npm, a zero-install GitHub Action for CI, and a VS Code extension for inline editor diagnostics.
+
+## Python (pip)
+
+The Python CLI is the reference implementation and supports exact token counting via [tiktoken](https://github.com/openai/tiktoken).
+
+**Requirements:** Python 3.9 or later.
+
+```bash
+pip install promptlint-cli
+```
+
+Verify the install:
+
+```bash
+promptlint --version
+```
+
+<Tip>
+  Install the optional `tiktoken` extra to get exact token counts using OpenAI's tokenizer. Without it, Promptlint falls back to a `chars / 4` heuristic that is accurate to within ±15%. The heuristic is fine for most use cases, but install tiktoken if you rely on precise cost estimates or strict `token_limit` enforcement.
+
+  ```bash
+  pip install "promptlint-cli[tiktoken]"
+  ```
+</Tip>
+
+## Node.js (npm)
+
+The Node.js CLI has the same interface as the Python CLI. It uses a `chars / 4` heuristic for token counts rather than tiktoken.
+
+**Requirements:** Node.js 16 or later.
+
+Install globally:
+
+```bash
+npm install -g promptlint-cli
+```
+
+Or run without installing using npx:
+
+```bash
+npx promptlint-cli --file system_prompt.txt
+```
+
+<Tabs>
+  <Tab title="Global install">
+    After installing globally, `promptlint` is available as a standard shell command:
+
+    ```bash
+    npm install -g promptlint-cli
+    promptlint --file prompt.txt
+    ```
+  </Tab>
+  <Tab title="npx (no install)">
+    Use `npx` to run Promptlint without a global install — useful for one-off checks or ephemeral CI environments:
+
+    ```bash
+    npx promptlint-cli --file prompt.txt
+    npx promptlint-cli -t "Please write some code for me"
+    ```
+  </Tab>
+</Tabs>
+
+## GitHub Action
+
+The GitHub Action requires no installation step. Add it to any workflow file and it runs on GitHub's infrastructure.
+
+**Basic usage** — scan prompt files in a pull request:
+
+```yaml
+name: Lint Prompts
+on: [pull_request]
+
+jobs:
+  promptlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: AryaanSheth/promptlint@v1
+        with:
+          path: 'prompts/**/*.txt'
+          fail-level: critical    # block merges on injection / leaked secrets / PII
+          show-score: true        # print A–F grade in the log
+```
+
+You can also lint an inline prompt string — no `actions/checkout` step required:
+
+```yaml
+- uses: AryaanSheth/promptlint@v1
+  with:
+    prompt: ${{ env.SYSTEM_PROMPT }}
+    fail-level: critical
+    show-score: true
+```
+
+**With SARIF output** to surface findings in the GitHub Security tab:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  - uses: actions/checkout@v4
+
+  - name: Run PromptLint
+    id: lint
+    uses: AryaanSheth/promptlint@v1
+    with:
+      path: 'prompts/'
+      sarif-output: promptlint.sarif
+      show-score: true
+
+  - uses: github/codeql-action/upload-sarif@v3
+    with:
+      sarif_file: promptlint.sarif
+    if: always()
+
+  - run: echo "Score ${{ steps.lint.outputs.score }}/100 (${{ steps.lint.outputs.grade }})"
+```
+
+**Action inputs:**
+
+| Input | Default | Description |
+|---|---|---|
+| `path` | `.` | File path or glob pattern to scan. Ignored when `prompt` is set. |
+| `prompt` | — | Inline prompt text to lint. When set, `path` is ignored. |
+| `fail-level` | `critical` | Exit non-zero on: `none` \| `warn` \| `critical` |
+| `config` | — | Path to `.promptlintrc`. Auto-detects repo root if blank. |
+| `show-score` | `false` | Print A–F health score in the workflow log. |
+| `sarif-output` | — | Write SARIF v2.1.0 file for the GitHub Security tab. |
+| `annotations` | `true` | Emit inline annotations on the PR diff. |
+
+**Action outputs:**
+
+| Output | Description |
+|---|---|
+| `findings-count` | Total findings across all scanned files. |
+| `critical-count` | CRITICAL severity findings. |
+| `score` | Health score 0–100. |
+| `grade` | Health grade A–F. |
+
+## VS Code
+
+Install the Promptlint extension from the Visual Studio Code Marketplace for inline diagnostics as you edit prompt files.
+
+**Extension ID:** `PromptLint.promptlint-vscode`
+
+Install it by searching for "PromptLint" in the Extensions panel, or use the marketplace link in the VS Code quick open (`Ctrl+P`):
+
+```
+ext install PromptLint.promptlint-vscode
+```
+
+The extension surfaces findings directly in the editor as you type, using the same rule engine as the CLI.
+
+## Token count accuracy
+
+The Python and Node.js CLIs differ in how they count tokens:
+
+| Runtime | Method | Accuracy |
+|---------|--------|----------|
+| Python (with tiktoken) | OpenAI's tiktoken tokenizer | Exact |
+| Python (without tiktoken) | `chars / 4` heuristic | ±15% |
+| Node.js | `chars / 4` heuristic | ±15% |
+
+If you use `token_limit` enforcement or rely on cost estimates for budgeting decisions, use the Python CLI with tiktoken installed:
+
+```bash
+pip install "promptlint-cli[tiktoken]"
+```

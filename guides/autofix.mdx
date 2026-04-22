@@ -1,0 +1,146 @@
+---
+title: 'Auto-fix prompts with --fix'
+description: 'Use --fix to automatically rewrite prompts: strip injection lines, remove politeness filler, simplify redundant phrases, and scaffold missing structure tags.'
+keywords: ['autofix', 'fix', 'prompt optimization', 'promptlint', 'rewrite']
+---
+
+The `--fix` flag tells PromptLint to rewrite your prompt in place after analyzing it. Instead of just reporting issues, it applies up to four transforms in sequence — removing injection content, cutting politeness filler, simplifying redundant phrases, and wrapping the result in structural tags. The output is printed to stdout so you can review it before deciding whether to commit the change.
+
+## What --fix does
+
+When you pass `--fix`, PromptLint runs the following transforms in order on the prompt text:
+
+<AccordionGroup>
+  <Accordion title="1. Remove injection content">
+    Lines matching any pattern in your `prompt_injection.patterns` config are dropped entirely. The remaining text is then cleaned up — dangling conjunctions at line endings are stripped and punctuation is normalized.
+
+    This corresponds to the `_remove_injection_content` function in `autofix.py`.
+  </Accordion>
+
+  <Accordion title="2. Remove politeness filler">
+    Words and phrases listed under `politeness_bloat.words` are removed via regex. After removing the words themselves, the fixer also strips trailing fragments that become meaningless in isolation — phrases like "for your help", "very much", "I would appreciate", and "be so kind as to".
+
+    Default words removed: `please`, `kindly`, `i would appreciate`, `thank you`, `be so kind as to`, `if possible`.
+
+    This corresponds to the `_apply_politeness_fix` function in `autofix.py`.
+  </Accordion>
+
+  <Accordion title="3. Fix redundant phrases">
+    Common verbose constructions are replaced with shorter equivalents. The full replacement list includes:
+
+    | Verbose phrase | Replacement |
+    |---|---|
+    | `in order to` | `to` |
+    | `due to the fact that` | `because` |
+    | `at this point in time` | `now` |
+    | `for the purpose of` | `for` |
+    | `in the event that` | `if` |
+    | `prior to` | `before` |
+    | `has the ability to` | `can` |
+    | `is able to` | `can` |
+    | `with regard to` | `about` |
+    | `in the near future` | `soon` |
+
+    ...and over 30 more. See `autofix.py:_fix_redundancy` for the complete list.
+  </Accordion>
+
+  <Accordion title="4. Scaffold missing structure">
+    If `structure_scaffold` is enabled and your config specifies required tags that are absent from the prompt, the fixer wraps the content in the appropriate XML tags.
+
+    The `<task>` tag wraps the full prompt text. Tags like `<context>` and `<output_format>` are added as empty placeholders only when the prompt already mentions those concepts. Other required tags are appended as empty elements.
+  </Accordion>
+</AccordionGroup>
+
+## Example
+
+The README shows this transform end-to-end:
+
+<CodeGroup>
+
+```text Input
+Please kindly write code in order to sort the array, thank you
+```
+
+```text Output
+<task>Write code to sort the array.</task>
+```
+
+</CodeGroup>
+
+What happened step by step:
+
+1. No injection patterns matched — text passes through unchanged.
+2. `please`, `kindly`, and `thank you` are stripped; the trailing fragment "thank you" is also removed.
+3. `in order to` is replaced with `to`.
+4. The cleaned text is wrapped in `<task>...</task>` because the `structure-sections` rule requires it and no `<task>` tag was present.
+
+## Controlling which fixes apply
+
+Each of the four transforms can be toggled independently in `.promptlintrc` under the `fix:` key:
+
+```yaml .promptlintrc
+fix:
+  enabled: true
+  prompt_injection: true      # remove injection lines
+  politeness_bloat: true      # strip please/kindly/thank you
+  verbosity_redundancy: true  # simplify verbose phrases
+  structure_scaffold: true    # wrap in <task>/<context>/<output> tags
+```
+
+Set any key to `false` to skip that transform. If `fix.enabled` is `false`, `--fix` has no effect regardless of the other keys.
+
+You can also control which words the politeness fixer targets:
+
+```yaml .promptlintrc
+rules:
+  politeness_bloat:
+    words:
+      - please
+      - kindly
+      # remove "thank you" from this list to preserve it
+```
+
+## Running --fix safely
+
+<Warning>
+  Auto-fix rewrites your prompt text. Always review the output before committing it — edge cases exist, and the fixer can occasionally remove more than intended.
+</Warning>
+
+<Steps>
+  <Step title="Run --fix and capture the output">
+    ```bash
+    promptlint --file system_prompt.txt --fix
+    ```
+
+    The optimized prompt is printed to stdout after the findings list.
+  </Step>
+
+  <Step title="Review the diff">
+    Compare the output against the original. If `--fix` removed something it should not have, identify which transform caused it and disable that rule in `.promptlintrc`.
+
+    ```yaml .promptlintrc
+    fix:
+      politeness_bloat: false   # keep polite phrasing, just report it
+    ```
+  </Step>
+
+  <Step title="Apply the change">
+    Once satisfied, replace the original file with the fixed output:
+
+    ```bash
+    promptlint --file system_prompt.txt --fix --format json \
+      | python -c "import sys,json; print(json.load(sys.stdin)['optimized_prompt'])" \
+      > system_prompt.txt
+    ```
+
+    Or use your editor's diff tool to apply individual changes selectively.
+  </Step>
+
+  <Step title="Commit">
+    Commit the updated prompt file. The next run of `promptlint` should report zero findings for the rules that were fixed.
+  </Step>
+</Steps>
+
+<Tip>
+  Run PromptLint with `--show-dashboard` alongside `--fix` to see how many tokens the optimized prompt saves per call.
+</Tip>

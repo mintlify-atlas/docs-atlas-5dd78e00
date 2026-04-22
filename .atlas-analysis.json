@@ -1,0 +1,91 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Promptlint",
+  "projectDescription": "A static analyzer for LLM prompts that catches security risks, token waste, and quality issues — like ESLint, but for AI prompt text.",
+  "theme": "luma",
+  "primaryColor": "#249c6c",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/usage",
+              "cli/configuration",
+              "cli/output-formats"
+            ]
+          },
+          {
+            "group": "Rules",
+            "pages": [
+              "rules/overview",
+              "rules/security",
+              "rules/quality",
+              "rules/cost"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/github-action",
+              "integrations/vscode",
+              "integrations/ci-cd"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/autofix",
+              "guides/inline-ignores",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Prompt injection and jailbreak detection with leetspeak/unicode normalization",
+    "PII and secret/credential scanning in prompts",
+    "Token cost estimation and budget enforcement",
+    "Prompt quality checks: vagueness, verbosity, structure, role clarity",
+    "Auto-fix: removes politeness filler, redundant phrases, and injection patterns",
+    "Health score (0–100) with A–F grade across security, cost, quality, and completeness",
+    "GitHub Action with SARIF output and PR annotations",
+    "VS Code extension with inline diagnostics",
+    "Available as Python (pip) and Node.js (npm) packages",
+    "Zero network calls — all analysis runs locally"
+  ],
+  "publicApiSurface": [
+    "promptlint [FILES...] [OPTIONS]",
+    "--file / -f PATH",
+    "--text / -t TEXT",
+    "--config / -c PATH",
+    "--format {text,json,sarif}",
+    "--fix",
+    "--fail-level {none,warn,critical}",
+    "--show-dashboard",
+    "--show-score",
+    "--quiet / -q",
+    "--exclude PATTERN",
+    "--list-rules",
+    "--explain RULE_ID",
+    "--init",
+    "LintEngine.analyze(text) -> List[Dict]",
+    "compute_score(results) -> Dict",
+    "GitHub Action: AryaanSheth/promptlint@v1 (inputs: path, prompt, fail-level, config, show-score, sarif-output, annotations)",
+    "GitHub Action outputs: findings-count, critical-count, score, grade"
+  ]
+}

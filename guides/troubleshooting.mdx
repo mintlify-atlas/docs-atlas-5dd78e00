@@ -1,0 +1,151 @@
+---
+title: 'Troubleshooting Promptlint — common issues'
+description: 'Solutions for the most common PromptLint problems: token count gaps, missing config, SARIF upload errors, false positives, and over-aggressive auto-fix.'
+keywords: ['troubleshooting', 'token count', 'tiktoken', 'SARIF', 'false positive', 'config', 'autofix']
+---
+
+Most PromptLint issues fall into a small set of categories: token counting differences between runtimes, configuration not being picked up, auto-fix being more aggressive than expected, and SARIF upload failures in GitHub Actions. The accordion below covers each one with a specific fix.
+
+<AccordionGroup>
+  <Accordion title="Token counts differ between the Python and npm CLIs">
+    The Python CLI uses [tiktoken](https://github.com/openai/tiktoken) for exact BPE token counts when it is installed. The npm CLI uses a `chars / 4` heuristic, which is typically accurate to within ±15%.
+
+    If you need precise counts for cost budgeting or strict `token_limit` enforcement, use the Python CLI with tiktoken installed:
+
+    ```bash
+    pip install "promptlint-cli[tiktoken]"
+    ```
+
+    The npm CLI is accurate enough for most development workflows but should not be used for billing-critical calculations.
+  </Accordion>
+
+  <Accordion title="pip install succeeds but token counts are wrong">
+    `tiktoken` is an optional dependency. The base install does not include it:
+
+    ```bash
+    pip install promptlint-cli        # tiktoken NOT included
+    pip install "promptlint-cli[tiktoken]"  # tiktoken included
+    ```
+
+    Without tiktoken, the Python CLI falls back to the same `chars / 4` estimate as npm. All other rules — injection detection, PII scanning, structure analysis — are unaffected by whether tiktoken is installed.
+
+    To check which counting method is active, run:
+
+    ```bash
+    promptlint --explain cost
+    ```
+
+    The rule description notes whether exact BPE counting or the character estimate is in use.
+  </Accordion>
+
+  <Accordion title="--fix removes too much text">
+    Auto-fix applies four transforms in sequence. If one of them removes content you want to keep, disable it in `.promptlintrc` under the `fix:` key:
+
+    ```yaml .promptlintrc
+    fix:
+      enabled: true
+      prompt_injection: true
+      politeness_bloat: false      # keep polite phrasing, just report it
+      verbosity_redundancy: true
+      structure_scaffold: true
+    ```
+
+    Always review the diff before committing a fixed prompt — `--fix` prints the optimized text to stdout so you can compare it against the original before overwriting anything.
+
+    If the structure scaffold wraps content in tags you do not want, disable `structure_scaffold` or remove the corresponding tag from your `structure_sections` rule config.
+  </Accordion>
+
+  <Accordion title="False positives on injection detection">
+    The `prompt-injection` rule normalizes text before matching — it decodes leetspeak, strips zero-width characters, collapses repeated characters, and applies Unicode NFKD normalization. This catches obfuscated attacks but can occasionally flag benign text, for example `$100 price` (where `$` maps to `s` in leetspeak normalization).
+
+    **Option 1 — Suppress per line:**
+
+    ```text
+    Your $100 budget allows 3 retries.  # promptlint-disable prompt-injection
+    ```
+
+    **Option 2 — Tighten the pattern list in `.promptlintrc`:**
+
+    ```yaml .promptlintrc
+    rules:
+      prompt_injection:
+        patterns:
+          - ignore previous instructions
+          - system prompt extraction
+          - "you are now a [a-zA-Z ]+"
+          # only include patterns relevant to your threat model
+    ```
+
+    Removing broad patterns from the list reduces false positives while keeping detection active for the attacks you care about.
+  </Accordion>
+
+  <Accordion title="Config file not picked up">
+    PromptLint looks for `.promptlintrc` in the **current working directory**, not in the directory of the file being linted. If you run PromptLint from a subdirectory, it will not find a config file at the repo root.
+
+    **Fix — run from the repo root:**
+
+    ```bash
+    # from repo root
+    promptlint prompts/system_prompt.txt
+    ```
+
+    **Fix — pass the config path explicitly:**
+
+    ```bash
+    promptlint --file prompts/system_prompt.txt --config /path/to/.promptlintrc
+    ```
+
+    You can generate a starter config in the current directory with:
+
+    ```bash
+    promptlint --init
+    ```
+  </Accordion>
+
+  <Accordion title="SARIF output rejected by GitHub Security tab">
+    Uploading a SARIF file to the GitHub Security tab requires the `security-events: write` permission. Without it, the `github/codeql-action/upload-sarif` step will fail with a `403` error.
+
+    Add the permission to your workflow:
+
+    ```yaml .github/workflows/promptlint.yml
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run PromptLint
+        id: lint
+        uses: AryaanSheth/promptlint@v1
+        with:
+          path: 'prompts/'
+          sarif-output: promptlint.sarif
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: promptlint.sarif
+        if: always()
+    ```
+
+    The `if: always()` on the upload step ensures SARIF is uploaded even when PromptLint exits with a non-zero code (for example, when `--fail-level critical` triggers on a finding).
+  </Accordion>
+</AccordionGroup>
+
+## Tips
+
+<Tip>
+  Run `promptlint --init` in your repo root to generate a `.promptlintrc` with all rules documented and ready to tune. This is the fastest way to get a valid config without writing YAML from scratch.
+</Tip>
+
+<Tip>
+  Use `--quiet` in CI pipelines. It suppresses the per-finding output and prints only the summary line, which keeps logs readable while still surfacing the total finding count and exit code.
+</Tip>
+
+<Tip>
+  Pin your patterns list in `.promptlintrc`. The default injection patterns are broad. Narrowing them to the specific attack strings that matter for your application reduces noise and makes the remaining findings more actionable.
+</Tip>
+
+<Tip>
+  If a rule fires consistently and you disagree with it, run `promptlint --explain <rule-id>` before suppressing it. The explanation includes the rationale and examples, which often clarifies whether the finding is a false positive or a real issue worth addressing.
+</Tip>

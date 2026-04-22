@@ -1,0 +1,76 @@
+---
+title: "Promptlint: static analysis for LLM prompts"
+description: "Promptlint is ESLint for AI prompts — it catches security risks, token waste, vague language, and missing structure before your prompt reaches the model."
+keywords: ["promptlint", "llm", "prompt linting", "static analysis", "prompt injection", "ai prompts"]
+---
+
+Promptlint is a static analyzer for the text you send to GPT-4, Claude, Gemini, and other large language models. Just as ESLint catches bugs and style problems in JavaScript before you ship, Promptlint catches security vulnerabilities, cost waste, quality issues, and structural gaps in your prompts before they ever reach the model. It runs entirely on your machine — no API calls, no data leaving your environment — and produces results in milliseconds.
+
+## What Promptlint checks
+
+Promptlint organizes its rules into four categories. Every finding carries one of three severity levels: `CRITICAL`, `WARN`, or `INFO`.
+
+### Security
+
+The most important category. Promptlint detects prompt injection attempts (including leetspeak and unicode-obfuscated variants), jailbreak patterns like "act as" or DAN prompts, hardcoded API keys and passwords, personally identifiable information (SSNs, credit cards, emails, phone numbers), and unsanitized user content injected into system prompts.
+
+### Cost
+
+Promptlint estimates the token count and per-call cost of every prompt based on your configured model and pricing. It also warns when a prompt exceeds your configured token budget, so expensive regressions get caught in CI before they reach production.
+
+### Quality
+
+Vague terms like "some", "stuff", and "maybe" are flagged. Passive voice, excessively long sentences, politeness filler ("please", "kindly", "thank you") that burns tokens without adding meaning, and redundant phrases ("in order to" → "to") are all detected. Many quality findings are auto-fixable with `--fix`.
+
+### Completeness
+
+Promptlint checks that your prompt has explicit sections for Task, Context, and Output; that a system role is defined; that an output format is specified; and that error-handling edge cases are addressed. It also flags prompts that ask the model to recall facts without any grounding context, reducing hallucination risk.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Runs locally" icon="lock">
+    All analysis happens on your machine. No prompt text is sent to any external service.
+  </Card>
+  <Card title="Fast" icon="bolt">
+    Results in under a second. Designed to run in pre-commit hooks and CI pipelines without slowing you down.
+  </Card>
+  <Card title="Auto-fix" icon="wand-magic-sparkles">
+    Pass `--fix` to automatically remove injection lines, strip politeness filler, simplify redundant phrases, and scaffold missing structure tags.
+  </Card>
+  <Card title="CI-ready" icon="github">
+    Exit codes map to severity levels. Block merges on critical findings and surface annotations directly in your PR diff.
+  </Card>
+  <Card title="Configurable" icon="sliders">
+    Every rule can be individually toggled, severity-overridden, and tuned with per-rule options via `.promptlintrc`.
+  </Card>
+  <Card title="Multiple runtimes" icon="layer-group">
+    Install via pip, npm, or use the GitHub Action with no installation step required.
+  </Card>
+</CardGroup>
+
+## Distribution channels
+
+Promptlint is available wherever your workflow lives:
+
+- **pip** — `pip install promptlint-cli` (Python 3.9+)
+- **npm** — `npm install -g promptlint-cli` (Node.js 16+)
+- **GitHub Action** — zero-install CI integration via `AryaanSheth/promptlint@v1`
+- **VS Code** — inline diagnostics from the Marketplace extension (`PromptLint.promptlint-vscode`)
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install Promptlint and lint your first prompt in under two minutes.
+  </Card>
+  <Card title="CLI usage" icon="terminal" href="/cli/usage">
+    Full reference for every flag, output format, and exit code.
+  </Card>
+  <Card title="Rules overview" icon="list-check" href="/rules/overview">
+    Browse all rules, their severities, and which ones are auto-fixable.
+  </Card>
+  <Card title="GitHub Action" icon="github" href="/integrations/github-action">
+    Add Promptlint to your CI pipeline with SARIF output and PR annotations.
+  </Card>
+</CardGroup>

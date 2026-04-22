@@ -1,0 +1,164 @@
+---
+title: 'Promptlint GitHub Action — CI prompt linting'
+description: 'Add Promptlint to any GitHub Actions workflow to catch prompt injection, leaked secrets, PII, and quality issues on every pull request.'
+keywords: ['promptlint', 'github action', 'ci', 'prompt linting', 'sarif', 'security']
+---
+
+The Promptlint GitHub Action runs static analysis on your LLM prompts directly in CI — no installation step required. It annotates the PR diff with inline findings, optionally emits a SARIF file for the GitHub Security tab, and exposes a health score you can reference in downstream steps. Add it to any workflow with a single `uses:` line.
+
+## Add to a workflow
+
+```yaml
+- uses: AryaanSheth/promptlint@v1
+  with:
+    path: 'prompts/**/*.txt'
+```
+
+The action runs on Node 20 and needs no setup beyond the `uses:` declaration. When you use the `prompt:` input to lint an inline string, you can skip the `actions/checkout@v4` step entirely.
+
+## Inputs
+
+<ParamField path="path" type="string" default=".">
+  File path or glob pattern to scan (e.g. `prompts/**/*.txt`). Ignored when `prompt` is set.
+</ParamField>
+
+<ParamField path="prompt" type="string" default="">
+  Inline prompt text to lint directly. When set, `path` is ignored and no checkout is needed.
+</ParamField>
+
+<ParamField path="fail-level" type="string" default="critical">
+  Minimum severity that causes a non-zero exit. Accepts `none`, `warn`, or `critical`.
+</ParamField>
+
+<ParamField path="config" type="string" default="">
+  Path to a `.promptlintrc` config file. Auto-detects the repo root config when left blank.
+</ParamField>
+
+<ParamField path="show-score" type="boolean" default="false">
+  Print the A–F health score summary in the workflow log.
+</ParamField>
+
+<ParamField path="sarif-output" type="string" default="">
+  Path to write a SARIF v2.1.0 file for upload to the GitHub Security tab. Leave blank to skip.
+</ParamField>
+
+<ParamField path="annotations" type="boolean" default="true">
+  Emit GitHub workflow annotations — inline on the PR diff — for each finding.
+</ParamField>
+
+## Outputs
+
+<ResponseField name="findings-count" type="number">
+  Total number of findings across all scanned files.
+</ResponseField>
+
+<ResponseField name="critical-count" type="number">
+  Number of CRITICAL severity findings (injection, leaked secrets, PII).
+</ResponseField>
+
+<ResponseField name="score" type="number">
+  Overall prompt health score from 0 to 100.
+</ResponseField>
+
+<ResponseField name="grade" type="string">
+  Prompt health grade: `A`, `B`, `C`, `D`, or `F`.
+</ResponseField>
+
+## Example workflows
+
+### 1. Basic: scan prompts/ on pull request
+
+Scan all `.txt` files in your `prompts/` directory on every pull request. The job fails if any CRITICAL finding (injection, secret, PII) is detected.
+
+```yaml
+name: Lint Prompts
+on: [pull_request]
+
+jobs:
+  promptlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: AryaanSheth/promptlint@v1
+        with:
+          path: 'prompts/**/*.txt'
+          fail-level: critical
+          show-score: true
+```
+
+### 2. Inline prompt: lint a string directly
+
+Lint a prompt string stored in an environment variable or secret. No checkout step needed.
+
+```yaml
+name: Validate System Prompt
+on: [push]
+
+jobs:
+  promptlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: AryaanSheth/promptlint@v1
+        with:
+          prompt: ${{ secrets.SYSTEM_PROMPT }}
+          fail-level: critical
+          show-score: true
+```
+
+<Note>
+  When using the `prompt:` input, you can omit `actions/checkout@v4` — the action does not need access to your repository files.
+</Note>
+
+### 3. SARIF + Security tab with score output
+
+Upload findings to the GitHub Security → Code scanning tab and echo the health score in the workflow log. Requires `security-events: write` permission.
+
+```yaml
+name: Lint Prompts
+on:
+  pull_request:
+    paths:
+      - 'prompts/**'
+      - '**/*.prompt'
+
+jobs:
+  promptlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run PromptLint
+        id: lint
+        uses: AryaanSheth/promptlint@v1
+        with:
+          path: 'prompts/'
+          fail-level: critical
+          show-score: true
+          sarif-output: promptlint.sarif
+
+      - name: Upload to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: promptlint.sarif
+        if: always()
+
+      - name: Print score
+        run: echo "Score ${{ steps.lint.outputs.score }}/100 (${{ steps.lint.outputs.grade }})"
+```
+
+<Tip>
+  Use `if: always()` on the SARIF upload step so findings are recorded even when the lint step fails.
+</Tip>
+
+<CardGroup cols={2}>
+  <Card title="VS Code extension" icon="puzzle" href="/integrations/vscode">
+    Get inline squiggles and quick fixes while editing prompts locally.
+  </Card>
+  <Card title="CI/CD patterns" icon="gear" href="/integrations/ci-cd">
+    Use Promptlint in GitLab CI, CircleCI, pre-commit hooks, and more.
+  </Card>
+</CardGroup>

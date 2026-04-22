@@ -1,80 +1,167 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Get started with Promptlint"
+description: "Install Promptlint and lint your first prompt in under two minutes — inline text, a file on disk, or piped from stdin."
+keywords: ["promptlint", "quickstart", "install", "lint prompt", "cli", "getting started"]
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+Promptlint is available as a Python package and a Node.js package. Both expose the same `promptlint` command. Pick whichever runtime you already have, or see the [installation page](/installation) for the GitHub Action and VS Code options.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  All analysis runs locally on your machine. No prompt text is sent to any external service or API.
 </Note>
+
+<Steps>
+
+  <Step title="Install Promptlint">
+    <CodeGroup>
+
+    ```bash pip
+    pip install promptlint-cli
+    ```
+
+    ```bash npm
+    npm install -g promptlint-cli
+    ```
+
+    </CodeGroup>
+
+    Verify the install:
+
+    ```bash
+    promptlint --version
+    ```
+  </Step>
+
+  <Step title="Lint your first prompt">
+    The fastest way to try Promptlint is with inline text using the `-t` flag. No files needed:
+
+    ```bash
+    promptlint -t "Please write some code for me"
+    ```
+
+    To lint a file on disk:
+
+    ```bash
+    promptlint --file system_prompt.txt
+    ```
+
+    You can also pass multiple files or glob patterns:
+
+    ```bash
+    promptlint prompts/**/*.txt --exclude prompts/drafts/*
+    ```
+  </Step>
+
+  <Step title="Read the findings">
+    Here is the output from scanning a prompt file that contains several issues:
+
+    ```
+    $ promptlint --file system_prompt.txt
+
+    PromptLint Findings
+    [ INFO     ] cost (line -) Prompt is ~38 tokens (~$0.0002 input per call on gpt-4o).
+    [ WARN     ] structure-sections (line -) No explicit sections detected (Task/Context/Output).
+    [ WARN     ] clarity-vague-terms (line 1) Vague term 'some' detected. Be more specific.
+    [ INFO     ] verbosity-redundancy (line 3) Redundant phrase 'In order to' detected. Use simpler alternative.
+    [ WARN     ] politeness-bloat (line 1) Consider removing 'Please' (adds 1.5 tokens without semantic value).
+    [ CRITICAL ] prompt-injection (line 5) Injection pattern detected: 'ignore previous instructions'.
+
+    1 file(s) scanned, 6 finding(s) in 0.41s
+    ```
+
+    Each finding shows the severity level, rule ID, line number, and a plain-English message. The severity levels are:
+
+    - `CRITICAL` — security risks: injection, jailbreaks, leaked secrets, PII
+    - `WARN` — quality and structural issues that affect model output
+    - `INFO` — cost estimates and minor style suggestions
+
+    **Exit codes** map directly to severity so you can use Promptlint in scripts and CI:
+
+    | Exit code | Meaning |
+    |-----------|---------|
+    | `0` | Clean — no findings at or above the fail level |
+    | `1` | Warnings found (requires `--fail-level warn`) |
+    | `2` | Critical findings found |
+  </Step>
+
+  <Step title="Configure for your project">
+    Generate a starter `.promptlintrc` configuration file in your current directory:
+
+    ```bash
+    promptlint --init
+    ```
+
+    This creates a `.promptlintrc` with all rules enabled and default settings for `gpt-4o`. Open it to tune your token budget, cost model, and individual rule settings:
+
+    ```yaml
+    model: gpt-4o
+    token_limit: 800
+    cost_per_1k_tokens: 0.005
+    calls_per_day: 10000
+
+    rules:
+      prompt_injection:
+        enabled: true
+        patterns:
+          - ignore previous instructions
+          - system prompt extraction
+      politeness_bloat:
+        enabled: true
+        words: [please, kindly, thank you, i would appreciate]
+      role_clarity:
+        enabled: true
+        severity: warn   # downgrade from CRITICAL
+
+    fix:
+      enabled: true
+      prompt_injection: true
+      politeness_bloat: true
+      verbosity_redundancy: true
+      structure_scaffold: true
+    ```
+
+    Promptlint looks for `.promptlintrc` in the current working directory. Run from your repo root, or pass `--config path/to/.promptlintrc` explicitly.
+  </Step>
+
+</Steps>
+
+## Common next steps
+
+**Auto-fix what can be fixed automatically:**
+
+```bash
+promptlint --file prompt.txt --fix
+```
+
+The `--fix` flag rewrites the prompt in place and prints the optimized version:
+
+```
+$ promptlint -t "Please kindly write code in order to sort the array, thank you" --fix
+
+Optimized Prompt
+<task>Write code to sort the array.</task>
+```
+
+**Run in CI with a strict fail level:**
+
+```bash
+promptlint prompts/ --fail-level warn --quiet
+```
+
+**Output JSON for downstream tooling:**
+
+```bash
+promptlint --file prompt.txt --format json
+```
+
+**Explain a specific rule:**
+
+```bash
+promptlint --explain prompt-injection
+```
+
+**Suppress a rule on a specific line:**
+
+```
+Your $100 budget  # promptlint-disable prompt-injection
+```

@@ -1,0 +1,118 @@
+---
+title: 'Promptlint VS Code extension — inline diagnostics'
+description: 'Install the Promptlint VS Code extension to get real-time squiggles, quick fixes, and token cost info for LLM prompt files.'
+keywords: ['promptlint', 'vscode', 'extension', 'diagnostics', 'prompt linting', 'inline']
+---
+
+The Promptlint VS Code extension surfaces the same analysis as the CLI directly in your editor. As you write or save `.txt`, `.md`, and `.prompt` files, it underlines issues inline, shows findings in the Problems panel, and displays a live token count and cost estimate in the status bar — all without leaving VS Code.
+
+## Install
+
+Search for **PromptLint** in the VS Code Extensions panel, or install from the Marketplace:
+
+**Extension ID:** `PromptLint.promptlint-vscode`
+
+```
+ext install PromptLint.promptlint-vscode
+```
+
+The extension requires the Promptlint CLI to be installed separately. If the CLI is not found on launch, the extension will prompt you to install it.
+
+```bash
+pip install promptlint-cli   # requires Python 3.9+
+```
+
+## Features
+
+**Real-time diagnostics** — Squiggly underlines appear for prompt injection patterns, vague terms, missing structure sections, politeness bloat, and any other rule violation. Findings also appear in the Problems panel (`Ctrl+Shift+M` / `Cmd+Shift+M`).
+
+**Quick fixes** — A lightbulb appears on fixable findings. One click applies the auto-fix for `politeness-bloat`, `verbosity-redundancy`, `structure-sections`, and `prompt-injection`.
+
+**Inline disable** — From the lightbulb menu, insert a `# promptlint-disable <rule>` comment to suppress a specific rule on that line.
+
+**Token and cost status bar** — The bottom status bar shows a live token count and estimated cost per API call for the active file.
+
+**Dashboard** — Open the command palette and run `PromptLint: Show Dashboard` for a full token savings breakdown.
+
+**Magic comment markers** — Lint prompt regions inside `.py`, `.ts`, or `.js` files without linting the whole file.
+
+## Supported file types
+
+| File type | Behavior |
+|-----------|----------|
+| `.txt`, `.md`, `.prompt` | Entire file is linted |
+| `.py`, `.ts`, `.js`, and others | Only `promptlint-start` / `promptlint-end` regions are linted |
+
+### Magic comment markers
+
+Wrap prompt strings in code files with marker comments to scope linting to just the prompt text:
+
+```python
+# promptlint-start
+SYSTEM_PROMPT = """
+You are a helpful assistant that summarizes articles.
+"""
+# promptlint-end
+```
+
+```typescript
+// promptlint-start
+const prompt = `You are a helpful assistant.`;
+// promptlint-end
+```
+
+## Settings
+
+Configure the extension under `File → Preferences → Settings` or in your workspace `settings.json`.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `promptlint.pythonPath` | `"python"` | Path to the Python interpreter that has `promptlint-cli` installed |
+| `promptlint.lintOnSave` | `true` | Lint the active file when it is saved |
+| `promptlint.lintOnType` | `false` | Lint as you type (debounced) |
+| `promptlint.lintOnTypeDelay` | `500` | Debounce delay in milliseconds for lint-on-type |
+| `promptlint.languages` | `["plaintext","markdown",...]` | VS Code language IDs to activate linting on |
+| `promptlint.configPath` | `""` | Explicit path to a `.promptlintrc` config file |
+| `promptlint.failLevel` | `"critical"` | Severity threshold: `none`, `warn`, or `critical` |
+| `promptlint.showStatusBar` | `true` | Show the token/cost status bar item |
+
+### Example settings.json
+
+```json
+{
+  "promptlint.lintOnType": true,
+  "promptlint.lintOnTypeDelay": 300,
+  "promptlint.failLevel": "warn",
+  "promptlint.configPath": ".github/.promptlintrc"
+}
+```
+
+## Commands
+
+All commands are available from the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+
+| Command | Description |
+|---------|-------------|
+| `PromptLint: Lint File` | Lint the currently active file |
+| `PromptLint: Fix File` | Apply all auto-fixes to the active file |
+| `PromptLint: Fix All Files` | Apply auto-fixes to all open prompt files |
+| `PromptLint: Show Dashboard` | Open the token savings breakdown panel |
+| `PromptLint: Explain Rule` | Pick a rule from the list and see its explanation |
+| `PromptLint: Initialize Config` | Generate a `.promptlintrc` in the workspace root |
+
+<Tip>
+  Run `PromptLint: Initialize Config` on a new project to generate a starter `.promptlintrc` with all rules documented inline.
+</Tip>
+
+<Note>
+  The extension activates on `plaintext`, `markdown`, `python`, `javascript`, `typescript`, `json`, and `yaml` language modes. Files in other languages are not linted unless you add the language ID to `promptlint.languages`.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="GitHub Action" icon="github" href="/integrations/github-action">
+    Scan prompt files in CI and annotate pull requests with findings.
+  </Card>
+  <Card title="CI/CD patterns" icon="gear" href="/integrations/ci-cd">
+    Integrate Promptlint into GitLab CI, pre-commit hooks, and shell scripts.
+  </Card>
+</CardGroup>

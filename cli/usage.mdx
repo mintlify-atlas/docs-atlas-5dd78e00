@@ -1,0 +1,252 @@
+---
+title: "promptlint CLI — commands, flags, and exit codes"
+description: "Complete reference for every promptlint flag, positional argument, exit code, and usage pattern including glob expansion, stdin, and inline text."
+keywords: ["promptlint", "cli", "flags", "commands", "usage", "exit codes"]
+---
+
+The `promptlint` command accepts files, inline text, or piped stdin and runs every enabled rule against the input in milliseconds. The sections below cover every flag, the exit-code contract used in CI, and worked examples drawn from real-world usage.
+
+## Synopsis
+
+```bash
+promptlint [FILES...] [OPTIONS]
+```
+
+## Positional arguments
+
+<ParamField path="files" type="string[]">
+  One or more prompt file paths or glob patterns. Patterns are expanded recursively when they contain `**`. Use `--exclude` to filter out matched paths.
+
+  ```bash
+  promptlint prompts/**/*.txt
+  ```
+</ParamField>
+
+## Flags
+
+<ParamField query="--file" type="string">
+  **Short form: `-f`**
+
+  Path to a single prompt file. Can be combined with positional `files` arguments; duplicates are deduplicated automatically.
+
+  ```bash
+  promptlint --file system_prompt.txt
+  ```
+</ParamField>
+
+<ParamField query="--text" type="string">
+  **Short form: `-t`**
+
+  Inline prompt text passed directly as a string. Use `\n` to embed newlines. When `--text` is provided, file arguments are ignored.
+
+  ```bash
+  promptlint --text "Please write some code for me"
+  ```
+</ParamField>
+
+<ParamField query="--config" type="string">
+  **Short form: `-c`**
+
+  Path to a `.promptlintrc` configuration file. Defaults to `.promptlintrc` in the current working directory. Pass an explicit path when running from a directory that does not contain your config.
+
+  ```bash
+  promptlint --file prompt.txt --config configs/.promptlintrc
+  ```
+</ParamField>
+
+<ParamField query="--format" type="string" default="text">
+  Output format. One of `text`, `json`, or `sarif`.
+
+  - `text` — human-readable coloured output (default)
+  - `json` — machine-readable JSON, suitable for integrations and custom tooling
+  - `sarif` — SARIF v2.1.0 for the GitHub Security tab
+
+  ```bash
+  promptlint --file prompt.txt --format json
+  ```
+</ParamField>
+
+<ParamField query="--fix" type="boolean" default="false">
+  Apply available auto-fixes to the prompt and print the optimised version. Fixes include removing politeness filler, simplifying redundant phrases, stripping injection lines, and scaffolding missing structure tags. Review the diff before committing.
+
+  ```bash
+  promptlint --file prompt.txt --fix
+  ```
+</ParamField>
+
+<ParamField query="--fail-level" type="string" default="critical">
+  Severity threshold that causes a non-zero exit code. One of `none`, `warn`, or `critical`.
+
+  - `none` — always exits `0`
+  - `warn` — exits `1` when any WARN or CRITICAL finding is present
+  - `critical` — exits `2` when any CRITICAL finding is present (default)
+
+  ```bash
+  promptlint prompts/ --fail-level warn
+  ```
+</ParamField>
+
+<ParamField query="--show-dashboard" type="boolean" default="false">
+  Include a token savings breakdown in the output. Shows current tokens, optimised tokens, savings per call, and projected monthly and annual savings based on `calls_per_day` from the config.
+
+  ```bash
+  promptlint --file prompt.txt --show-dashboard
+  ```
+</ParamField>
+
+<ParamField query="--show-score" type="boolean" default="false">
+  Display a health score from 0 to 100 broken down into four categories: security, cost, quality, and completeness.
+
+  ```bash
+  promptlint --file prompt.txt --show-score
+  ```
+</ParamField>
+
+<ParamField query="--quiet" type="boolean" default="false">
+  **Short form: `-q`**
+
+  Suppress individual findings and print only the summary line. Useful in CI pipelines where you only need the pass/fail signal.
+
+  ```bash
+  promptlint prompts/ --fail-level warn --quiet
+  ```
+</ParamField>
+
+<ParamField query="--exclude" type="string">
+  Glob pattern to exclude from the resolved file list. Repeatable — pass `--exclude` multiple times to add more exclusions.
+
+  ```bash
+  promptlint prompts/**/*.txt --exclude prompts/drafts/*
+  ```
+</ParamField>
+
+<ParamField query="--list-rules" type="boolean" default="false">
+  Print a table of all available rules with their category, default severity, and auto-fix support, then exit.
+
+  ```bash
+  promptlint --list-rules
+  ```
+</ParamField>
+
+<ParamField query="--explain" type="string">
+  Print a detailed explanation of a specific rule by its ID, then exit. Run `--list-rules` first to see all valid rule IDs.
+
+  ```bash
+  promptlint --explain prompt-injection
+  ```
+</ParamField>
+
+<ParamField query="--init" type="boolean" default="false">
+  Generate a starter `.promptlintrc` in the current working directory and exit. Fails if `.promptlintrc` already exists.
+
+  ```bash
+  promptlint --init
+  ```
+</ParamField>
+
+<ParamField query="--version" type="boolean" default="false">
+  **Short form: `-V`**
+
+  Print the installed version and exit.
+
+  ```bash
+  promptlint --version
+  ```
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | No findings, or `--fail-level none` |
+| `1`  | One or more WARN findings (only when `--fail-level warn`) |
+| `2`  | One or more CRITICAL findings (default behaviour with `--fail-level critical`) |
+
+<Note>
+  Exit code `130` is returned when the process is interrupted with `Ctrl+C`.
+</Note>
+
+## Usage examples
+
+### Lint a single file
+
+```bash
+$ promptlint --file system_prompt.txt
+
+PromptLint Findings
+[ INFO     ] cost (line -) Prompt is ~38 tokens (~$0.0002 input per call on gpt-4o).
+[ WARN     ] structure-sections (line -) No explicit sections detected (Task/Context/Output).
+[ WARN     ] clarity-vague-terms (line 1) Vague term 'some' detected. Be more specific.
+[ INFO     ] verbosity-redundancy (line 3) Redundant phrase 'In order to' detected. Use simpler alternative.
+[ WARN     ] politeness-bloat (line 1) Consider removing 'Please' (adds 1.5 tokens without semantic value).
+[ CRITICAL ] prompt-injection (line 5) Injection pattern detected: 'ignore previous instructions'.
+
+1 file(s) scanned, 6 finding(s) in 0.41s
+```
+
+### Lint inline text
+
+```bash
+promptlint -t "Please write some code for me"
+```
+
+### Glob patterns with exclusions
+
+```bash
+promptlint prompts/**/*.txt --exclude prompts/drafts/*
+```
+
+### Pipe from stdin
+
+```bash
+cat prompt.txt | promptlint --format json
+```
+
+### Auto-fix a prompt
+
+```bash
+$ promptlint -t "Please kindly write code in order to sort the array, thank you" --fix
+
+Optimized Prompt
+<task>Write code to sort the array.</task>
+```
+
+### CI mode — block on warnings, summary only
+
+```bash
+promptlint prompts/ --fail-level warn --quiet
+```
+
+### Output JSON for downstream tooling
+
+```bash
+promptlint --file prompt.txt --format json --show-dashboard --show-score
+```
+
+### Explore rules
+
+```bash
+# List all rules
+promptlint --list-rules
+
+# Explain a specific rule
+promptlint --explain prompt-injection
+```
+
+## Inline ignores
+
+Add a `# promptlint-disable` comment on the same line to suppress findings for that line:
+
+```text
+Please write code  # promptlint-disable politeness-bloat
+```
+
+Omit the rule ID to suppress all rules on the line:
+
+```text
+Please write code  # promptlint-disable
+```
+
+<Warning>
+  File size is capped at 10 MB. Files or stdin input above this limit are skipped with an error message. Use `--quiet` to suppress per-file output and see only the summary.
+</Warning>

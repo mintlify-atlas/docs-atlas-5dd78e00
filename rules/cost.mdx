@@ -1,0 +1,213 @@
+---
+title: 'Cost rules — token counting and budget enforcement'
+description: 'Promptlint cost rules: tiktoken vs chars/4 counting, token budget enforcement, politeness-bloat auto-fix, token savings dashboard, and A–F health grades.'
+keywords: ['promptlint', 'cost', 'tokens', 'budget', 'tiktoken', 'politeness-bloat', 'score', 'grade']
+---
+
+Promptlint's three cost rules measure and manage the token footprint of your prompts. Together they account for 20% of the overall health score. The `cost` rule provides a per-call cost estimate and optional volume projections. The `cost-limit` rule blocks CI when a prompt exceeds a configured token budget. The `politeness-bloat` rule flags polite filler words that consume tokens without adding semantic value — and can automatically remove them.
+
+<AccordionGroup>
+  <Accordion title="cost — INFO">
+    Reports the estimated token count for the prompt and the input cost per API call, based on the model and pricing configured in `.promptlintrc`.
+
+    **Example finding**
+
+    ```text
+    [ INFO ] cost (line -) Prompt is ~38 tokens (~$0.0002 input per call on gpt-4o).
+    At 10,000 calls/day -> ~$2.00/day input.
+    ```
+
+    Volume projections are only shown when `calls_per_day` is configured to fewer than 100,000. The default (`1,000,000`) suppresses projections to avoid misleading estimates.
+
+    **Configuration**
+
+    ```yaml
+    model: gpt-4o
+    cost_per_1k_tokens: 0.005
+    calls_per_day: 10000
+    ```
+
+    | Field | Default | Description |
+    |---|---|---|
+    | `model` | `gpt-4o` | Model name passed to tiktoken for encoding. Falls back to `cl100k_base` for unknown models. |
+    | `cost_per_1k_tokens` | `0.005` | Input cost in USD per 1,000 tokens. |
+    | `calls_per_day` | `1000000` | Volume used for daily cost projection. Set to your actual call volume. |
+  </Accordion>
+
+  <Accordion title="cost-limit — WARN">
+    Fires when the prompt's token count exceeds the configured `token_limit`. Use this to enforce a budget ceiling in CI — prompts that grow beyond the limit cause the job to fail when `--fail-level warn` is set.
+
+    **Example finding**
+
+    ```text
+    [ WARN ] cost-limit (line -) Prompt exceeds token limit by 142 tokens (942 > 800).
+    ```
+
+    **Configuration**
+
+    ```yaml
+    token_limit: 800   # default: 800 tokens
+    ```
+
+    | Field | Default | Range | Description |
+    |---|---|---|---|
+    | `token_limit` | `800` | 1 – 1,000,000 | Maximum allowed tokens. Prompts above this threshold trigger the WARN finding. |
+
+    **CI usage** — block merges when prompts exceed budget:
+
+    ```yaml
+    - uses: AryaanSheth/promptlint@v1
+      with:
+        path: 'prompts/**/*.txt'
+        fail-level: warn
+    ```
+  </Accordion>
+
+  <Accordion title="politeness-bloat — WARN, auto-fixable">
+    Flags polite filler words and phrases that add tokens without changing the model's behavior. Removing them reduces cost and often improves instruction clarity.
+
+    **Default polite phrases**
+
+    ```text
+    please / kindly / i would appreciate / thank you /
+    be so kind as to / if possible
+    ```
+
+    **Example finding**
+
+    ```text
+    [ WARN ] politeness-bloat (line 1) Consider removing 'Please' (adds 1.5 tokens without semantic value).
+    Please write a summary of the document.
+    ^
+    ```
+
+    **Auto-fix** strips matched phrases in place when `--fix` is passed:
+
+    ```text
+    $ promptlint -t "Please kindly write code in order to sort the array, thank you" --fix
+
+    Optimized Prompt
+    <task>Write code to sort the array.</task>
+    ```
+
+    **Configuration**
+
+    Customize the word list and the per-hit token savings estimate:
+
+    ```yaml
+    rules:
+      politeness_bloat:
+        enabled: true
+        words: [please, kindly, thank you, i would appreciate, if you could]
+        savings_per_hit: 1.5
+        allow_politeness: false   # set true to downgrade to INFO
+    ```
+
+    | Field | Default | Description |
+    |---|---|---|
+    | `words` | See above | List of polite phrases to flag. Replaces the default list entirely. |
+    | `savings_per_hit` | `1.5` | Estimated tokens saved per removed phrase, used in the savings dashboard. |
+    | `allow_politeness` | `false` | When `true`, severity is downgraded to INFO and the message says "Optional: Remove…" |
+  </Accordion>
+</AccordionGroup>
+
+## Token counting: Python vs npm
+
+The two CLI distributions use different token-counting methods. The difference matters for `cost-limit` enforcement and cost estimates.
+
+<CodeGroup>
+
+```bash python (exact)
+# Requires tiktoken — install with:
+pip install "promptlint-cli[tiktoken]"
+
+# Without tiktoken, Python falls back to the chars/4 heuristic (same as npm)
+pip install promptlint-cli
+```
+
+```bash npm (heuristic)
+npm install -g promptlint-cli
+# Uses chars / 4 — approximately ±15% accuracy
+# No additional dependencies required
+```
+
+</CodeGroup>
+
+| CLI | Token counting | Accuracy |
+|---|---|---|
+| Python (with tiktoken) | `tiktoken.encoding_for_model(model)` — exact BPE encoding | Exact |
+| Python (without tiktoken) | `len(text) // 4` | ±15% |
+| npm | `len(text) / 4` | ±15% |
+
+<Warning>
+If `tiktoken` is not installed, `pip install promptlint-cli` silently falls back to the `chars / 4` heuristic. Install with `pip install "promptlint-cli[tiktoken]"` to get exact counts. This matters most when you have a strict `token_limit` in CI.
+</Warning>
+
+For unknown model names, the Python client falls back to the `cl100k_base` encoding (used by GPT-4 and GPT-3.5-turbo).
+
+## Savings dashboard
+
+Pass `--show-dashboard` to print a token-savings breakdown alongside findings. The dashboard aggregates estimated savings from all auto-fixable rules.
+
+```bash
+promptlint --file system_prompt.txt --show-dashboard
+```
+
+```text
+PromptLint Findings
+[ INFO     ] cost (line -) Prompt is ~284 tokens (~$0.0014 input per call on gpt-4o).
+[ WARN     ] politeness-bloat (line 1) Consider removing 'Please' (adds 1.5 tokens without semantic value).
+[ WARN     ] politeness-bloat (line 4) Consider removing 'kindly' (adds 1.5 tokens without semantic value).
+[ INFO     ] verbosity-redundancy (line 2) Redundant phrase 'in order to' detected. Use simpler alternative.
+[ WARN     ] clarity-vague-terms (line 3) Vague term 'some' detected. Be more specific.
+
+Token Savings Dashboard
+  politeness-bloat       3.0 tokens  (2 matches × 1.5)
+  verbosity-redundancy   2.0 tokens  (1 match × 2.0)
+  clarity-vague-terms    2.0 tokens  (1 match × 2.0)
+  ─────────────────────────────────────────────────
+  Estimated total        7.0 tokens  (~$0.00004/call)
+```
+
+## Health score and grade
+
+Pass `--show-score` to print a 0–100 health score and A–F letter grade after the findings list.
+
+```bash
+promptlint --file system_prompt.txt --show-score
+```
+
+```text
+PromptLint Score: 74/100  (C)
+  Security       95/100
+  Cost           80/100
+  Quality        60/100
+  Completeness   55/100
+```
+
+**Score weights** — the overall score is a weighted sum of four category scores:
+
+| Category | Weight |
+|---|---|
+| Security | 40% |
+| Quality | 25% |
+| Cost | 20% |
+| Completeness | 15% |
+
+**Deduction logic per category**
+
+Each CRITICAL finding deducts up to 25 points (capped at 50 for security, 100 for others). Each WARN deducts up to 10 points (capped at 30). Each INFO deducts up to 3 points (capped at 15). The category score is `max(0, 100 − deductions)`.
+
+**Grade thresholds**
+
+| Grade | Score range |
+|---|---|
+| A | 90 – 100 |
+| B | 80 – 89 |
+| C | 70 – 79 |
+| D | 60 – 69 |
+| F | 0 – 59 |
+
+<Tip>
+Use `--show-score` in CI to track prompt quality over time, even when `--fail-level` is set to `critical`. The score and grade are available as Action outputs (`score` and `grade`) for use in downstream steps.
+</Tip>
